@@ -1,70 +1,55 @@
-# Getting Started with Create React App
+# Polygon - Spatial Computing Drum Machine
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+## Overview
 
-## Available Scripts
+Polygon is a web-based drum machine that uses spatial computing to generate drum patterns. It provides an intuitive and visually engaging way to create rhythms based on the spatial arrangement of nodes on the screen. Each node corresponds to a distinct sound, and their placement, rotation, and distance from each other dynamically influence the audio output. Polygon is hosted at [Polygon Drum Machine](https://polygon.iimaginary.com/).
 
-In the project directory, you can run:
+## Features
 
-### `npm start`
+- **Interactive Node Placement**: Click to add nodes which represent different drum sounds in the sequence.
+- **Spatial Sound Control**: Drag nodes to reposition and right-click to cycle through sounds. Rotate to adjust sound characteristics.
+- **Visual and Sonic Patterns**: The arrangement of nodes creates visual patterns that map to the rhythm and texture of the drum sequence.
+- **Dynamic Sequence Timing**: Control the timing gaps in the sequence by adjusting the distance between nodes.
+- **Node Manipulation**: Select and delete nodes as needed to refine your drum pattern.
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
+## Getting Started
 
-The page will reload when you make changes.\
-You may also see any lint errors in the console.
+To get started with Polygon, simply visit the website and begin by adding nodes. No installation or additional setup is required.
 
-### `npm test`
+### Controls
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+- **Add Node**: Places a new node on the screen.
+- **Drag Node**: Repositions the node which alters the sound dynamically.
+- **Right-Click Node**: Cycles through available sound types for the selected node.
+- **Rotate Node**: Changes the node's sound characteristics.
+- **Delete Node**: Select a node and press the backspace key to remove it.
 
-### `npm run build`
+## Development
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+Polygon is built with web technologies and leverages the RNBO framework for audio processing. Users with an interest in audio software development are encouraged to contribute and utilize the codebase for creating new instruments or projects.
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+### Prerequisites
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+- A web browser with support for the Web Audio API.
+- Familiarity with JavaScript for development and customization purposes.
 
-### `npm run eject`
+### Customization
 
-**Note: this is a one-way operation. Once you `eject`, you can't go back!**
+Polygon is designed with modularity in mind, facilitating easy customization and extension:
 
-If you aren't satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+- Add new sound samples or synthesis methods to expand the sonic palette.
+- Modify the visual representation of nodes and sequences for a personalized experience.
+- Integrate with MIDI devices or other web-based music tools for extended functionality.
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you're on your own.
+## Contributing
 
-You don't have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn't feel obligated to use this feature. However we understand that this tool wouldn't be useful if you couldn't customize it when you are ready for it.
+Contributions to the Polygon project are welcome. Whether it's a new feature, bug fix, or an improvement in the code or documentation, feel free to fork the repository and submit your pull requests.
 
-## Learn More
+## License
 
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
+Polygon is an open-source project licensed under the [MIT License](LICENSE.md).
 
-To learn React, check out the [React documentation](https://reactjs.org/).
+## Acknowledgements
 
-### Code Splitting
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
-
-### Analyzing the Bundle Size
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
-
-### Making a Progressive Web App
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
-
-### Advanced Configuration
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
-
-### Deployment
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
-
-### `npm run build` fails to minify
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+- The RNBO team at Cycling '74 for providing the audio engine that powers Polygon.
+- The [Future of Coding](https://futureofcoding.org/) community and Alex McClean for the inspiration.
