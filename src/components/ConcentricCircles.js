@@ -13,7 +13,7 @@ const ConcentricCircles = ({ radius, spacing, count }) => {
             height: `${2 * (radius + i * spacing)}px`,
             borderRadius: '50%',
             backgroundColor: 'grey',
-            opacity: 0.3,
+            opacity: 0.2,
             transform: 'translate(-50%, -50%)',
             zIndex: -2
           }}

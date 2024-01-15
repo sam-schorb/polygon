@@ -41,8 +41,6 @@ const App = () => {
 
   const currentHitRef = useRef(currentHit); // Ref to track the current hit
 
-
-
 // Update currentHitRef whenever currentHit changes
 useEffect(() => {
   currentHitRef.current = currentHit;
