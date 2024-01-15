@@ -1,3 +1,5 @@
+// DistanceDisplay.js
+// Display the distances of each node from each other
 const DistanceDisplay = ({ distances, style }) => {
   return (
     <div style={{ ...style, position: 'absolute', top: 0, left: 0, width: '250px', overflowY: 'auto', maxHeight: '90%' }}>

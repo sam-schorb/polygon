@@ -1,4 +1,5 @@
-// Rest of the App component continues here
+// ConcentricCircles.js
+// Background
 const ConcentricCircles = ({ radius, spacing, count }) => {
     const circles = [];
     for (let i = 0; i < count; i++) {

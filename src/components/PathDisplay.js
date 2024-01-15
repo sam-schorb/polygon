@@ -1,3 +1,6 @@
+// PathDisplay.js
+// Displays the order of the nodes in the sequence and the distance from node to node
+
 const PathDisplay = ({ path, distances }) => {
     if (!path || path.length === 0) return null;
   

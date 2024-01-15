@@ -1,4 +1,5 @@
-const Crosshairs = ({ squares, outerCircleRadius }) => {
+// Crosshairs.js
+const Crosshairs = ({ squares }) => {
     if (!Array.isArray(squares) || squares.length === 0) return null; // Ensure squares is an array and not empty
   
     const crosshairLines = [];
@@ -27,4 +28,4 @@ const Crosshairs = ({ squares, outerCircleRadius }) => {
     return <>{crosshairLines}</>;
   };
 
-  export default Crosshairs
+export default Crosshairs

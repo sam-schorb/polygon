@@ -1,3 +1,5 @@
+// Square.js
+
 import React, { useRef, memo, useContext } from 'react';
 import useInteract from '../utils/useInteract';
 import { CurrentHitContext } from './App'; // Import the context

@@ -1,3 +1,5 @@
+// Setup.js
+// Sets up thre RNBO web audio context
 /* global RNBO */
 
 async function setup(setCurrentHit) {

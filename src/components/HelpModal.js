@@ -1,3 +1,4 @@
+// HelpModal.js
 const HelpModal = ({ isOpen, onClose }) => {
     if (!isOpen) return null;
   
@@ -59,5 +60,5 @@ Generate drum patterns through spatial computing.
     );
   };
   
-  export default HelpModal;
+export default HelpModal;
   

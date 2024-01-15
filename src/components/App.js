@@ -1,7 +1,10 @@
+/* eslint-disable react-hooks/exhaustive-deps */
 /* global RNBO */
+// Importing necessary React components and utility functions
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { getRandomColor, normalizeRotation, colorMap, getNextColor } from '../utils/utils';
 import { calculateCentreOfMass, squaredPolar, calculateDistance, calculateAngles } from '../utils/math';
+// Importing custom React components
 import Square from './Square';
 import MovingCircle from './MovingCircle';
 import ConcentricCircles from './ConcentricCircles';
@@ -15,13 +18,13 @@ import HelpModal from './HelpModal'; // import the HelpModal component
 import setup from './Setup';
 import logo from '../images/iimaginaryLogoLightGray.png';
 
+// Creating a context for managing current hit data
 export const CurrentHitContext = React.createContext();
 
-
+// Main App component
 const App = () => {
   const [currentHit, setCurrentHit] = useState(null);
   const [squares, setSquares] = useState([]);
-  const [squareCount, setSquareCount] = useState(1);
   const [selectedSquare, setSelectedSquare] = useState(null);
   const [distances, setDistances] = useState([]);
   const [visitedOrder, setVisitedOrder] = useState([]);
@@ -31,28 +34,196 @@ const App = () => {
   const [isPaused, setIsPaused] = useState(false);
   const rnboDevice = useRef(null);
   const [showHelpModal, setShowHelpModal] = useState(false); // state to control HelpModal visibility
-
   const [squareAngles, setSquareAngles] = useState({}); // New state for angles
-  const outerCircleRadius = 300; // Radius of the outermost circle
-
   const [circlePosition, setCirclePosition] = useState({ x: 0, y: 0 });
   const [movingCircleActive, setMovingCircleActive] = useState(false);
   const circleSpeed = useRef(4); // Adjustable speed variable
-
   const currentHitRef = useRef(currentHit); // Ref to track the current hit
 
-// Update currentHitRef whenever currentHit changes
-useEffect(() => {
-  currentHitRef.current = currentHit;
-}, [currentHit]);
-
-
+  // State for tracking window size
+  // eslint-disable-next-line no-unused-vars
   const [windowSize, setWindowSize] = useState({
     width: window.innerWidth,
     height: window.innerHeight,
   });
+  
+    // Function to add a new square
+    const addSquare = () => {
+      if (squares.length < 16) {// Limit of 16 squares
+        
+        setSquares(squares => [
+          ...squares,
+          {
+            id: squares.length + 1,
+            color: getRandomColor(),
+            position: {
+              x: Math.random() * window.innerWidth,
+              y: Math.random() * window.innerHeight
+            },
+            rotation: Math.random() * 360
+          }
+        ]);
+  
+      }
+    };
+  
+    // Function to delete a square based on its ID
+    const deleteSquare = (id) => {
+    // Filter out the square to be deleted
+    const remainingSquares = squares.filter(square => square.id !== id);
+  
+      // Reassign IDs to make them continuous
+      const updatedSquares = remainingSquares.map((square, index) => ({
+          ...square,
+          id: index + 1
+      }));
+  
+    // Update visited order and distances
+    const updatedVisitedOrder = updatedSquares.map(square => square.id);
+      const updatedDistances = updatedSquares.map(square => {
+          const distancesToOthers = updatedSquares.reduce((acc, otherSquare) => {
+              if (square.id !== otherSquare.id) {
+                  acc[`Square ${otherSquare.id}`] = calculateDistance(square.position, otherSquare.position);
+              }
+              return acc;
+          }, {});
+          return { id: square.id, distances: distancesToOthers };
+      });
+  
+      setSquares(updatedSquares);
+      setVisitedOrder(updatedVisitedOrder);
+      setDistances(updatedDistances);
+  };
 
-  useEffect(() => {
+    // Function to reorder points using the polar coordinates method
+    const reorderSquares = (squares) => {
+      const centre = calculateCentreOfMass(squares.map(sq => sq.position));
+      return squares.map(square => ({
+        ...square,
+        polarCoords: squaredPolar(square.position, centre)
+      }))
+      .sort((a, b) => a.polarCoords[0] - b.polarCoords[0] || a.polarCoords[1] - b.polarCoords[1])
+      .map(sq => ({ id: sq.id, color: sq.color, position: sq.position, rotation: sq.rotation }));
+    };
+    
+    // Function to calculate the shortest path using reordered squares
+    const calculateShortestPath = (squares) => {
+      if (squares.length === 0) return [];
+  
+      const orderedSquares = reorderSquares(squares);
+      return orderedSquares.map(sq => sq.id);
+    }; 
+
+    // Function to send state data to RNBO device
+    const sendStateToRNBO = (dataToSend) => {
+      if (!rnboDevice.current) {
+        console.log('No RNBO device available');
+        return;
+      }
+  
+      const event = new RNBO.MessageEvent(RNBO.TimeNow, 'in1', dataToSend);
+      rnboDevice.current.scheduleEvent(event);
+    };
+
+    // Handler for changes in Help Modal state
+    const handleHelpModalChange = (e) => {
+      setShowHelpModal(e.target.checked);
+    };
+  
+    const closeHelpModal = () => {
+      setShowHelpModal(false);
+      };
+  
+    // Function to toggle play/pause state
+    const togglePlayPause = () => {
+      setIsPaused(!isPaused);
+  
+      if (!isPaused) {
+        // Pause the application and store current data
+        setOriginalData(generateSquareDataAndAngles()); // Store current data
+        sendStateToRNBO(new Array(96).fill(0)); // Send zeroes
+      } else {
+        // Resume the application
+        sendStateToRNBO(originalData); // Send original data
+      }
+    };
+    
+    // Function to generate data for RNBO and calculate angles in the same order
+    const generateSquareDataAndAngles = () => {
+      const startIndex = visitedOrder.indexOf(1);
+      const orderedVisit = startIndex >= 0 ? [...visitedOrder.slice(startIndex), ...visitedOrder.slice(0, startIndex)] : visitedOrder;
+  
+      const dataToSend = [];
+      const newAngles = [];
+  
+      orderedVisit.forEach((id, index) => {
+        const square = squares.find(sq => sq.id === id);
+        const nextId = orderedVisit[(index + 1) % orderedVisit.length];
+        const nextSquare = squares.find(sq => sq.id === nextId);
+  
+        if (square && nextSquare) {
+          const dx = nextSquare.position.x - square.position.x;
+          const dy = nextSquare.position.y - square.position.y;
+          const angle = (Math.atan2(dy, dx) * 180 / Math.PI + 360) % 360;
+          newAngles.push(angle);
+        } else {
+          newAngles.push(0); // Default angle if square not found
+        }
+  
+        if (square) {
+          const distance = distances.find(d => d.id === id)?.distances[`Square ${nextId}`] || 0;
+          const colorNumber = colorMap[square.color];
+          dataToSend.push(square.id, square.position.x, square.position.y, square.rotation, colorNumber, distance);
+        }
+      });
+  
+      setSquareAngles(newAngles);
+  
+      return dataToSend.flat().concat(Array(96).fill(0).slice(orderedVisit.length * 6));
+    };
+    
+    // Function to handle drag event on squares
+    const handleDrag = useCallback((id, newPosition) => {
+      setSquares(squares => squares.map(square => square.id === id ? { ...square, position: newPosition } : square));
+    }, []);
+  
+    // Function to handle rotation of squares
+    const handleRotate = useCallback((id, newRotation) => {
+      setSquares(squares => squares.map(square => square.id === id ? { ...square, rotation: normalizeRotation(newRotation) } : square));
+    }, []);
+  
+    // Function to handle right-click on squares
+    const handleRightClick = useCallback((id) => {
+      setSquares(squares => squares.map(square => {
+        if (square.id === id) {
+          return { ...square, color: getNextColor(square.color) };
+        }
+        return square;
+      }));
+    }, []);
+
+    // Function to handle selection of a square
+    const selectSquare = useCallback((id) => {
+      setSelectedSquare(id);
+    }, []);
+  
+  // Function to toggle the visibility of display elements
+    const toggleDisplays = () => {
+    setShowDisplays(!showDisplays); // Toggle the state
+    };
+  
+    // Function to toggle the visibility of the crosshair
+    const toggleCrosshair = () => {
+    setShowCrosshair(!showCrosshair); 
+    };
+
+    // Update currentHitRef whenever currentHit changes
+    useEffect(() => {
+      currentHitRef.current = currentHit;
+    }, [currentHit]);
+
+    // Effect to setup RNBO device
+    useEffect(() => {
     setup(setCurrentHit).then(device => {
       rnboDevice.current = device;
       console.log("RNBO setup completed");
@@ -67,14 +238,15 @@ useEffect(() => {
     });
   }, []);
 
-  useEffect(() => {
-    if (rnboDevice.current) {
-      sendStateToRNBO();
-    }
-  }, [squares, visitedOrder, distances]);
+    // Effect to send state to RNBO
+    useEffect(() => {
+      if (rnboDevice.current) {
+        sendStateToRNBO();
+      }
+    }, [squares, visitedOrder, distances]);
 
-  // Moving circle logic
-  useEffect(() => {
+    // Effect to handle moving circle logic
+    useEffect(() => {
     if (currentHit !== null && squareAngles[currentHit]) {
       const currentSquare = squares.find(sq => sq.id === currentHit);
       const nextSquareIndex = (visitedOrder.indexOf(currentHit) + 1) % visitedOrder.length;
@@ -113,80 +285,15 @@ useEffect(() => {
   }, [currentHit, squares, squareAngles, visitedOrder, circleSpeed.current]);
 
 
-
-  const sendStateToRNBO = (dataToSend) => {
-    if (!rnboDevice.current) {
-      console.log('No RNBO device available');
-      return;
-    }
-
-    const event = new RNBO.MessageEvent(RNBO.TimeNow, 'in1', dataToSend);
-    rnboDevice.current.scheduleEvent(event);
-  };
-
-  const handleHelpModalChange = (e) => {
-    setShowHelpModal(e.target.checked);
-  };
-
-  const closeHelpModal =
-() => {
-setShowHelpModal(false);
-};
-
-  const togglePlayPause = () => {
-    setIsPaused(!isPaused);
-
-    if (!isPaused) {
-      // Pause the application
-      setOriginalData(generateSquareDataAndAngles()); // Store current data
-      sendStateToRNBO(new Array(96).fill(0)); // Send zeroes
-    } else {
-      // Resume the application
-      sendStateToRNBO(originalData); // Send original data
-    }
-  };
-
-  // Function to generate data for RNBO and calculate angles in the same order
-  const generateSquareDataAndAngles = () => {
-    const startIndex = visitedOrder.indexOf(1);
-    const orderedVisit = startIndex >= 0 ? [...visitedOrder.slice(startIndex), ...visitedOrder.slice(0, startIndex)] : visitedOrder;
-
-    const dataToSend = [];
-    const newAngles = [];
-
-    orderedVisit.forEach((id, index) => {
-      const square = squares.find(sq => sq.id === id);
-      const nextId = orderedVisit[(index + 1) % orderedVisit.length];
-      const nextSquare = squares.find(sq => sq.id === nextId);
-
-      if (square && nextSquare) {
-        const dx = nextSquare.position.x - square.position.x;
-        const dy = nextSquare.position.y - square.position.y;
-        const angle = (Math.atan2(dy, dx) * 180 / Math.PI + 360) % 360;
-        newAngles.push(angle);
-      } else {
-        newAngles.push(0); // Default angle if square not found
+    useEffect(() => {
+      if (rnboDevice.current && !isPaused) {
+        const dataToSend = generateSquareDataAndAngles();
+        sendStateToRNBO(dataToSend);
       }
+    }, [squares, visitedOrder, distances, isPaused]);
 
-      if (square) {
-        const distance = distances.find(d => d.id === id)?.distances[`Square ${nextId}`] || 0;
-        const colorNumber = colorMap[square.color];
-        dataToSend.push(square.id, square.position.x, square.position.y, square.rotation, colorNumber, distance);
-      }
-    });
 
-    setSquareAngles(newAngles);
-
-    return dataToSend.flat().concat(Array(96).fill(0).slice(orderedVisit.length * 6));
-  };
-
-  useEffect(() => {
-    if (rnboDevice.current && !isPaused) {
-      const dataToSend = generateSquareDataAndAngles();
-      sendStateToRNBO(dataToSend);
-    }
-  }, [squares, visitedOrder, distances, isPaused]);
-
+    // Effect to handle window resize events
     useEffect(() => {
       const handleResize = () => {
         setWindowSize({ width: window.innerWidth, height: window.innerHeight });
@@ -195,237 +302,137 @@ setShowHelpModal(false);
       return () => window.removeEventListener('resize', handleResize);
     }, []);
 
-  useEffect(() => {
-    const handleBackspaceKeyPress = (event) => {
-      if (event.key === 'Backspace' && selectedSquare != null) {
-        deleteSquare(selectedSquare);
-        setSelectedSquare(null);
-      }
-    };
-
-    document.addEventListener('keydown', handleBackspaceKeyPress);
-    return () => document.removeEventListener('keydown', handleBackspaceKeyPress);
-  }, [selectedSquare]);
-
-  useEffect(() => {
-    const newDistances = squares.map(square => {
-      const distancesToOthers = squares.reduce((acc, otherSquare) => {
-        if (square.id !== otherSquare.id) {
-          acc[`Square ${otherSquare.id}`] = calculateDistance(square.position, otherSquare.position);
+    // Effect to handle backspace key press for square deletion
+    useEffect(() => {
+      const handleBackspaceKeyPress = (event) => {
+        if (event.key === 'Backspace' && selectedSquare != null) {
+          deleteSquare(selectedSquare);
+          setSelectedSquare(null);
         }
-        return acc;
-      }, {});
-      return { id: square.id, distances: distancesToOthers };
-    });
-    setDistances(newDistances);
-    setVisitedOrder(calculateShortestPath(squares));
-  }, [squares]);
+      };
 
+      document.addEventListener('keydown', handleBackspaceKeyPress);
+      return () => document.removeEventListener('keydown', handleBackspaceKeyPress);
+    }, [selectedSquare]);
 
-  // Function to reorder points using the polar coordinates method
-  const reorderSquares = (squares) => {
-    const centre = calculateCentreOfMass(squares.map(sq => sq.position));
-    return squares.map(square => ({
-      ...square,
-      polarCoords: squaredPolar(square.position, centre)
-    }))
-    .sort((a, b) => a.polarCoords[0] - b.polarCoords[0] || a.polarCoords[1] - b.polarCoords[1])
-    .map(sq => ({ id: sq.id, color: sq.color, position: sq.position, rotation: sq.rotation }));
-  };
+    // Effect to update distances and visitedOrder
+    useEffect(() => {
+      const newDistances = squares.map(square => {
+        const distancesToOthers = squares.reduce((acc, otherSquare) => {
+          if (square.id !== otherSquare.id) {
+            acc[`Square ${otherSquare.id}`] = calculateDistance(square.position, otherSquare.position);
+          }
+          return acc;
+        }, {});
+        return { id: square.id, distances: distancesToOthers };
+      });
+      setDistances(newDistances);
+      setVisitedOrder(calculateShortestPath(squares));
+    }, [squares]);
 
-
-
+    // Effect to update square angles
     useEffect(() => {
       calculateAngles( visitedOrder, squares, setSquareAngles );
     }, [squares, visitedOrder]);
 
-  // Modified function to calculate the shortest path using reordered squares
-  const calculateShortestPath = (squares) => {
-    if (squares.length === 0) return [];
+  return (
+    <CurrentHitContext.Provider value={{ currentHit, setCurrentHit }}>
 
-    const orderedSquares = reorderSquares(squares);
-    return orderedSquares.map(sq => sq.id);
-  };    
+    <div style={{
+      position: 'relative',
+      width: window.innerWidth,
+      height: window.innerHeight,
+      overflow: 'hidden', // Hide the overflow
 
-
-    
-    const addSquare = () => {
-      if (squares.length < 16) {
-        
-        setSquares(squares => [
-          ...squares,
-          {
-            id: squares.length + 1,
-            color: getRandomColor(),
-            position: {
-              x: Math.random() * window.innerWidth,
-              y: Math.random() * window.innerHeight
-            },
-            rotation: Math.random() * 360
-          }
-        ]);
-
-      }
-    };
-  
-
-  const handleDrag = useCallback((id, newPosition) => {
-    setSquares(squares => squares.map(square => square.id === id ? { ...square, position: newPosition } : square));
-  }, []);
-
-  const handleRotate = useCallback((id, newRotation) => {
-    setSquares(squares => squares.map(square => square.id === id ? { ...square, rotation: normalizeRotation(newRotation) } : square));
-  }, []);
-
-  const handleRightClick = useCallback((id) => {
-    setSquares(squares => squares.map(square => {
-      if (square.id === id) {
-        return { ...square, color: getNextColor(square.color) };
-      }
-      return square;
-    }));
-  }, []);
-
-  const selectSquare = useCallback((id) => {
-    setSelectedSquare(id);
-  }, []);
-
-  const deleteSquare = (id) => {
-    // Filter out the deleted square
-    const remainingSquares = squares.filter(square => square.id !== id);
-
-    // Reassign IDs to make them continuous
-    const updatedSquares = remainingSquares.map((square, index) => ({
-        ...square,
-        id: index + 1
-    }));
-
-    // Update visitedOrder and distances for the new IDs
-    const updatedVisitedOrder = updatedSquares.map(square => square.id);
-    const updatedDistances = updatedSquares.map(square => {
-        const distancesToOthers = updatedSquares.reduce((acc, otherSquare) => {
-            if (square.id !== otherSquare.id) {
-                acc[`Square ${otherSquare.id}`] = calculateDistance(square.position, otherSquare.position);
-            }
-            return acc;
-        }, {});
-        return { id: square.id, distances: distancesToOthers };
-    });
-
-    setSquares(updatedSquares);
-    setVisitedOrder(updatedVisitedOrder);
-    setDistances(updatedDistances);
-    setSquareCount(updatedSquares.length); // This line ensures the next square ID is correct
-};
-
-
-const toggleDisplays = () => {
-  setShowDisplays(!showDisplays); // Toggle the state
-};
-
-const toggleCrosshair = () => {
-  setShowCrosshair(!showCrosshair); // Toggle the state
-};
-
-
-return (
-  <CurrentHitContext.Provider value={{ currentHit, setCurrentHit }}>
-
-  <div style={{
-    position: 'relative',
-    width: window.innerWidth,
-    height: window.innerHeight,
-    overflow: 'hidden', // Hide the overflow
-
-  }}>
-      {/* Conditionally render the logo */}
-      {!showDisplays && (
-        <a href="https://www.iimaginary.com/" target="_blank" rel="noopener noreferrer">
-          <img 
-            src={logo}
-            alt="Logo"
-            style={{ 
-              position: 'absolute', 
-              width: '55px', 
-              height: '50px', 
-              paddingLeft: '10px',
-              paddingTop: '10px' 
-            }}
-          />
-        </a>
-      )}
-
-    <canvas id="pathCanvas" style={{ position: 'absolute', top: 0, left: 0, zIndex: -1 }}></canvas>
-      {/* Centered container for "Add Node" button and checkboxes */}
-      <div style={{
-        display: 'flex',
-        justifyContent: 'center', // This centers the .controls div
-        alignItems: 'center',
-        marginTop: '15px',
-        fontFamily: 'Courier New, monospace',
-      }}>
-        <Controls
-          squaresLength={squares.length}
-          addSquareCallback={addSquare} // Replace with actual function from your App component
-          showDisplays={showDisplays}
-          toggleDisplays={toggleDisplays}
-          showCrosshair={showCrosshair}
-          toggleCrosshair={toggleCrosshair}
-          isPaused={isPaused}
-          togglePlayPause={togglePlayPause}
-          showHelpModal={showHelpModal}
-          handleHelpModalChange={handleHelpModalChange}
-        />
-
-      </div>
-        {/* Render the path rectangles */}
-        {visitedOrder.map((id, index) => {
-          const square = squares.find(sq => sq.id === id);
-          if (!square) return null;
-
-          let nextSquareIndex = (index + 1) % visitedOrder.length;
-          // Check if there are only two squares and if it's the second iteration
-          if (visitedOrder.length === 2 && index === 1) {
-            return null; // Don't render the second rectangle
-          }
-
-          const nextSquare = squares.find(sq => sq.id === visitedOrder[nextSquareIndex]);
-
-          return (
-            <Path
-              key={id}
-              startX={square.position.x + 50} // Center of the square
-              startY={square.position.y + 50}
-              endX={nextSquare.position.x + 50}
-              endY={nextSquare.position.y + 50}
+    }}>
+        {/* Conditionally render the logo */}
+        {!showDisplays && (
+          <a href="https://www.iimaginary.com/" target="_blank" rel="noopener noreferrer">
+            <img 
+              src={logo}
+              alt="Logo"
+              style={{ 
+                position: 'absolute', 
+                width: '55px', 
+                height: '50px', 
+                paddingLeft: '10px',
+                paddingTop: '10px' 
+              }}
             />
-          );
-        })}
+          </a>
+        )}
 
-        {/* Render squares */}
-        {squares.map(square => (
-          <Square
-            key={square.id}
-            id={square.id}
-            color={square.color}
-            position={square.position}
-            rotation={square.rotation}
-            onDrag={handleDrag}
-            onRotate={handleRotate}
-            onRightClick={handleRightClick}
-            onSelect={selectSquare}
+      <canvas id="pathCanvas" style={{ position: 'absolute', top: 0, left: 0, zIndex: -1 }}></canvas>
+        {/* Centered container for "Add Node" button and checkboxes */}
+        <div style={{
+          display: 'flex',
+          justifyContent: 'center', // This centers the .controls div
+          alignItems: 'center',
+          marginTop: '15px',
+          fontFamily: 'Courier New, monospace',
+        }}>
+          <Controls
+            squaresLength={squares.length}
+            addSquareCallback={addSquare} // Replace with actual function from your App component
+            showDisplays={showDisplays}
+            toggleDisplays={toggleDisplays}
+            showCrosshair={showCrosshair}
+            toggleCrosshair={toggleCrosshair}
+            isPaused={isPaused}
+            togglePlayPause={togglePlayPause}
+            showHelpModal={showHelpModal}
+            handleHelpModalChange={handleHelpModalChange}
           />
-        ))}
-    {showDisplays && <DistanceDisplay distances={distances} style={{ marginLeft: '10px', marginTop: '10px' }} />}
-    {showDisplays && <SquareDetails squares={squares} />}
-    <PathDisplay path={visitedOrder} distances={distances} />
-    {movingCircleActive && <MovingCircle position={circlePosition} />}
-    <ConcentricCircles radius={120} spacing={120} count={5} />
-    {showCrosshair && <Crosshairs squares={squares} outerCircleRadius={outerCircleRadius} />}
-    <HelpModal isOpen={showHelpModal} onClose={closeHelpModal} />
+
+        </div>
+          {/* Render the path rectangles */}
+          {visitedOrder.map((id, index) => {
+            const square = squares.find(sq => sq.id === id);
+            if (!square) return null;
+
+            let nextSquareIndex = (index + 1) % visitedOrder.length;
+            // Check if there are only two squares and if it's the second iteration
+            if (visitedOrder.length === 2 && index === 1) {
+              return null; // Don't render the second rectangle
+            }
+
+            const nextSquare = squares.find(sq => sq.id === visitedOrder[nextSquareIndex]);
+
+            return (
+              <Path
+                key={id}
+                startX={square.position.x + 50} // Center of the square
+                startY={square.position.y + 50}
+                endX={nextSquare.position.x + 50}
+                endY={nextSquare.position.y + 50}
+              />
+            );
+          })}
+
+          {/* Render squares */}
+          {squares.map(square => (
+            <Square
+              key={square.id}
+              id={square.id}
+              color={square.color}
+              position={square.position}
+              rotation={square.rotation}
+              onDrag={handleDrag}
+              onRotate={handleRotate}
+              onRightClick={handleRightClick}
+              onSelect={selectSquare}
+            />
+          ))}
+      {showDisplays && <DistanceDisplay distances={distances} style={{ marginLeft: '10px', marginTop: '10px' }} />}
+      {showDisplays && <SquareDetails squares={squares} />}
+      <PathDisplay path={visitedOrder} distances={distances} />
+      {movingCircleActive && <MovingCircle position={circlePosition} />}
+      <ConcentricCircles radius={120} spacing={120} count={5} />
+      {showCrosshair && <Crosshairs squares={squares} />}
+      <HelpModal isOpen={showHelpModal} onClose={closeHelpModal} />
 
 
-  </div>
+    </div>
   </CurrentHitContext.Provider>
 
 );

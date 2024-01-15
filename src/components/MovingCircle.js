@@ -1,3 +1,6 @@
+// MovingCircle.js
+// A bead that moves from node to node, visualising the timing of the sequence
+
 const MovingCircle = ({ position }) => {
     return (
       <div style={{
