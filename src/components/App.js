@@ -38,7 +38,6 @@ const App = () => {
   const [circlePosition, setCirclePosition] = useState({ x: 0, y: 0 });
   const [movingCircleActive, setMovingCircleActive] = useState(false);
   const circleSpeed = useRef(4); // Adjustable speed variable
-  const currentHitRef = useRef(currentHit); // Ref to track the current hit
 
   // State for tracking window size
   // eslint-disable-next-line no-unused-vars
@@ -148,27 +147,16 @@ const App = () => {
       }
     };
     
-    // Function to generate data for RNBO and calculate angles in the same order
+    // Function to generate data for RNBO without mutating animation state
     const generateSquareDataAndAngles = () => {
       const startIndex = visitedOrder.indexOf(1);
       const orderedVisit = startIndex >= 0 ? [...visitedOrder.slice(startIndex), ...visitedOrder.slice(0, startIndex)] : visitedOrder;
   
       const dataToSend = [];
-      const newAngles = [];
   
       orderedVisit.forEach((id, index) => {
         const square = squares.find(sq => sq.id === id);
         const nextId = orderedVisit[(index + 1) % orderedVisit.length];
-        const nextSquare = squares.find(sq => sq.id === nextId);
-  
-        if (square && nextSquare) {
-          const dx = nextSquare.position.x - square.position.x;
-          const dy = nextSquare.position.y - square.position.y;
-          const angle = (Math.atan2(dy, dx) * 180 / Math.PI + 360) % 360;
-          newAngles.push(angle);
-        } else {
-          newAngles.push(0); // Default angle if square not found
-        }
   
         if (square) {
           const distance = distances.find(d => d.id === id)?.distances[`Square ${nextId}`] || 0;
@@ -176,8 +164,6 @@ const App = () => {
           dataToSend.push(square.id, square.position.x, square.position.y, square.rotation, colorNumber, distance);
         }
       });
-  
-      setSquareAngles(newAngles);
   
       return dataToSend.flat().concat(Array(96).fill(0).slice(orderedVisit.length * 6));
     };
@@ -216,11 +202,6 @@ const App = () => {
     const toggleCrosshair = () => {
     setShowCrosshair(!showCrosshair); 
     };
-
-    // Update currentHitRef whenever currentHit changes
-    useEffect(() => {
-      currentHitRef.current = currentHit;
-    }, [currentHit]);
 
     // Effect to setup RNBO device
     useEffect(() => {
@@ -426,7 +407,7 @@ const App = () => {
       {showDisplays && <DistanceDisplay distances={distances} style={{ marginLeft: '10px', marginTop: '10px' }} />}
       {showDisplays && <SquareDetails squares={squares} />}
       <PathDisplay path={visitedOrder} distances={distances} />
-      {movingCircleActive && <MovingCircle position={circlePosition} />}
+      {movingCircleActive && !isPaused && <MovingCircle position={circlePosition} />}
       <ConcentricCircles radius={120} spacing={120} count={5} />
       {showCrosshair && <Crosshairs squares={squares} />}
       <HelpModal isOpen={showHelpModal} onClose={closeHelpModal} />
