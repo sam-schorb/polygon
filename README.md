@@ -26,7 +26,7 @@ To get started with Polygon, simply visit the website and begin by adding nodes.
 
 ## Development
 
-Polygon is built with web technologies and leverages the RNBO framework for audio processing. Users with an interest in audio software development are encouraged to contribute and utilize the codebase for creating new instruments or projects.
+Polygon is built with web technologies and a custom Web Audio drum engine for audio processing. Users with an interest in audio software development are encouraged to contribute and utilize the codebase for creating new instruments or projects.
 
 ### Prerequisites
 
@@ -51,5 +51,5 @@ Polygon is an open-source project licensed under the [MIT License](LICENSE.md).
 
 ## Acknowledgements
 
-- The RNBO team at Cycling '74 for providing the audio engine that powers Polygon.
+- The RNBO team at Cycling '74 for early inspiration.
 - The [Future of Coding](https://futureofcoding.org/) community and Alex McClean for the inspiration.

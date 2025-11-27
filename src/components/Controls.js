@@ -2,8 +2,6 @@
 import React from 'react';
 
 function Controls({
-  squaresLength,
-  addSquareCallback,
   showDisplays,
   toggleDisplays,
   showCrosshair,
@@ -15,27 +13,8 @@ function Controls({
 }) {
   return (
     <div className="controls" style={{ display: 'flex' }}>
-      {/* "Add Node" button */}
-      {squaresLength < 16 && (
-        <button onClick={addSquareCallback} style={{
-          backgroundColor: 'white',
-          color: 'black',
-          padding: '10px 20px',
-          textAlign: 'center',
-          textDecoration: 'none',
-          fontSize: '16px',
-          cursor: 'pointer',
-          borderRadius: '2px',
-          border: 'none',
-          boxShadow: '0 2px 5px rgba(0,0,0,0.2)',
-          fontFamily: 'Courier New, monospace',
-        }}>
-          Add Node
-        </button>
-      )}
-
       {/* Container for checkboxes */}
-      <div style={{ display: 'flex', marginLeft: '20px' }}>
+      <div style={{ display: 'flex' }}>
         <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
           <input
             type="checkbox"

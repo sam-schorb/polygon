@@ -16,7 +16,7 @@ export const calculateCentreOfMass = (points) => {
     ];
   };
   
-  export const calculateDistance = (position1, position2) => {
+export const calculateDistance = (position1, position2) => {
     const dx = position1.x - position2.x;
     const dy = position1.y - position2.y;
     return Math.sqrt(dx * dx + dy * dy).toFixed(2); // Returns the distance in pixels

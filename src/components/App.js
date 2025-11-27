@@ -1,22 +1,31 @@
 /* eslint-disable react-hooks/exhaustive-deps */
-/* global RNBO */
 // Importing necessary React components and utility functions
-import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { getRandomColor, normalizeRotation, colorMap, getNextColor } from '../utils/utils';
-import { calculateCentreOfMass, squaredPolar, calculateDistance, calculateAngles } from '../utils/math';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { createDrumEngine } from '../audio/drums';
+import { createSynthEngine } from '../audio/fmEngine';
+import {
+  calculateAngles,
+  calculateCentreOfMass,
+  calculateDistance,
+  squaredPolar,
+} from '../utils/math';
+import {
+  getNextColor,
+  getRandomColor,
+  normalizeRotation,
+} from '../utils/utils';
 // Importing custom React components
-import Square from './Square';
-import MovingCircle from './MovingCircle';
+import logo from '../images/cloudLogoSVG.svg';
 import ConcentricCircles from './ConcentricCircles';
-import Crosshairs from './Crosshairs';
-import Path from './Path';
 import Controls from './Controls';
+import Crosshairs from './Crosshairs';
 import DistanceDisplay from './DistanceDisplay';
-import SquareDetails from './SquareDetails';
-import PathDisplay from './PathDisplay';
 import HelpModal from './HelpModal'; // import the HelpModal component
-import setup from './Setup';
-import logo from '../images/iimaginaryLogoLightGray.png';
+import MovingCircle from './MovingCircle';
+import Path from './Path';
+import PathDisplay from './PathDisplay';
+import Square from './Square';
+import SquareDetails from './SquareDetails';
 
 // Creating a context for managing current hit data
 export const CurrentHitContext = React.createContext();
@@ -30,14 +39,26 @@ const App = () => {
   const [visitedOrder, setVisitedOrder] = useState([]);
   const [showDisplays, setShowDisplays] = useState(false); // New state variable
   const [showCrosshair, setShowCrosshair] = useState(false); // New state variable
-  const [originalData, setOriginalData] = useState([]);
   const [isPaused, setIsPaused] = useState(false);
-  const rnboDevice = useRef(null);
   const [showHelpModal, setShowHelpModal] = useState(false); // state to control HelpModal visibility
   const [squareAngles, setSquareAngles] = useState({}); // New state for angles
   const [circlePosition, setCirclePosition] = useState({ x: 0, y: 0 });
   const [movingCircleActive, setMovingCircleActive] = useState(false);
-  const circleSpeed = useRef(4); // Adjustable speed variable
+  const [tempo, setTempo] = useState(1); // relative tempo control (0-3x)
+  const [soundBank, setSoundBank] = useState('drums'); // drums | synth
+  const [restartKey, setRestartKey] = useState(0); // manual restart trigger
+  const audioEngineRef = useRef(null);
+  const schedulerRef = useRef({
+    frameId: null,
+    running: false,
+    skipFrame: false,
+  });
+  const squaresRef = useRef(squares);
+  const visitedOrderRef = useRef(visitedOrder);
+  const distancesRef = useRef(distances);
+  const soundBankRef = useRef(soundBank);
+  const tempoRef = useRef(tempo);
+  const baseSecondsPerPixel = 0.0015; // doubled speed baseline
 
   // State for tracking window size
   // eslint-disable-next-line no-unused-vars
@@ -45,316 +66,577 @@ const App = () => {
     width: window.innerWidth,
     height: window.innerHeight,
   });
-  
-    // Function to add a new square
-    const addSquare = () => {
-      if (squares.length < 16) {// Limit of 16 squares
-        
-        setSquares(squares => [
-          ...squares,
-          {
-            id: squares.length + 1,
-            color: getRandomColor(),
-            position: {
-              x: Math.random() * window.innerWidth,
-              y: Math.random() * window.innerHeight
-            },
-            rotation: Math.random() * 360
-          }
-        ]);
-  
-      }
-    };
-  
-    // Function to delete a square based on its ID
-    const deleteSquare = (id) => {
-    // Filter out the square to be deleted
-    const remainingSquares = squares.filter(square => square.id !== id);
-  
-      // Reassign IDs to make them continuous
-      const updatedSquares = remainingSquares.map((square, index) => ({
-          ...square,
-          id: index + 1
-      }));
-  
-    // Update visited order and distances
-    const updatedVisitedOrder = updatedSquares.map(square => square.id);
-      const updatedDistances = updatedSquares.map(square => {
-          const distancesToOthers = updatedSquares.reduce((acc, otherSquare) => {
-              if (square.id !== otherSquare.id) {
-                  acc[`Square ${otherSquare.id}`] = calculateDistance(square.position, otherSquare.position);
-              }
-              return acc;
-          }, {});
-          return { id: square.id, distances: distancesToOthers };
-      });
-  
-      setSquares(updatedSquares);
-      setVisitedOrder(updatedVisitedOrder);
-      setDistances(updatedDistances);
+
+  // Function to add a new square
+  const addSquare = () => {
+    if (squares.length < 16) {
+      // Limit of 16 squares
+
+      setSquares(squares => [
+        ...squares,
+        {
+          id: squares.length + 1,
+          color: getRandomColor(),
+          position: {
+            x: Math.random() * window.innerWidth,
+            y: Math.random() * window.innerHeight,
+          },
+          rotation: Math.random() * 360,
+        },
+      ]);
+    }
   };
 
-    // Function to reorder points using the polar coordinates method
-    const reorderSquares = (squares) => {
-      const centre = calculateCentreOfMass(squares.map(sq => sq.position));
-      return squares.map(square => ({
-        ...square,
-        polarCoords: squaredPolar(square.position, centre)
-      }))
-      .sort((a, b) => a.polarCoords[0] - b.polarCoords[0] || a.polarCoords[1] - b.polarCoords[1])
-      .map(sq => ({ id: sq.id, color: sq.color, position: sq.position, rotation: sq.rotation }));
-    };
-    
-    // Function to calculate the shortest path using reordered squares
-    const calculateShortestPath = (squares) => {
-      if (squares.length === 0) return [];
-  
-      const orderedSquares = reorderSquares(squares);
-      return orderedSquares.map(sq => sq.id);
-    }; 
+  // Function to delete a square based on its ID
+  const deleteSquare = id => {
+    // Filter out the square to be deleted
+    const remainingSquares = squares.filter(square => square.id !== id);
 
-    // Function to send state data to RNBO device
-    const sendStateToRNBO = (dataToSend) => {
-      if (!rnboDevice.current) {
-        console.log('No RNBO device available');
-        return;
-      }
-  
-      const event = new RNBO.MessageEvent(RNBO.TimeNow, 'in1', dataToSend);
-      rnboDevice.current.scheduleEvent(event);
-    };
+    // Reassign IDs to make them continuous
+    const updatedSquares = remainingSquares.map((square, index) => ({
+      ...square,
+      id: index + 1,
+    }));
 
-    // Handler for changes in Help Modal state
-    const handleHelpModalChange = (e) => {
-      setShowHelpModal(e.target.checked);
-    };
-  
-    const closeHelpModal = () => {
-      setShowHelpModal(false);
-      };
-  
-    // Function to toggle play/pause state
-    const togglePlayPause = () => {
-      setIsPaused(!isPaused);
-  
-      if (!isPaused) {
-        // Pause the application and store current data
-        setOriginalData(generateSquareDataAndAngles()); // Store current data
-        sendStateToRNBO(new Array(96).fill(0)); // Send zeroes
-      } else {
-        // Resume the application
-        sendStateToRNBO(originalData); // Send original data
-      }
-    };
-    
-    // Function to generate data for RNBO without mutating animation state
-    const generateSquareDataAndAngles = () => {
-      const startIndex = visitedOrder.indexOf(1);
-      const orderedVisit = startIndex >= 0 ? [...visitedOrder.slice(startIndex), ...visitedOrder.slice(0, startIndex)] : visitedOrder;
-  
-      const dataToSend = [];
-  
-      orderedVisit.forEach((id, index) => {
-        const square = squares.find(sq => sq.id === id);
-        const nextId = orderedVisit[(index + 1) % orderedVisit.length];
-  
-        if (square) {
-          const distance = distances.find(d => d.id === id)?.distances[`Square ${nextId}`] || 0;
-          const colorNumber = colorMap[square.color];
-          dataToSend.push(square.id, square.position.x, square.position.y, square.rotation, colorNumber, distance);
+    // Update visited order and distances
+    const updatedVisitedOrder = updatedSquares.map(square => square.id);
+    const updatedDistances = updatedSquares.map(square => {
+      const distancesToOthers = updatedSquares.reduce((acc, otherSquare) => {
+        if (square.id !== otherSquare.id) {
+          acc[`Square ${otherSquare.id}`] = calculateDistance(
+            square.position,
+            otherSquare.position
+          );
         }
-      });
-  
-      return dataToSend.flat().concat(Array(96).fill(0).slice(orderedVisit.length * 6));
-    };
-    
-    // Function to handle drag event on squares
-    const handleDrag = useCallback((id, newPosition) => {
-      setSquares(squares => squares.map(square => square.id === id ? { ...square, position: newPosition } : square));
-    }, []);
-  
-    // Function to handle rotation of squares
-    const handleRotate = useCallback((id, newRotation) => {
-      setSquares(squares => squares.map(square => square.id === id ? { ...square, rotation: normalizeRotation(newRotation) } : square));
-    }, []);
-  
-    // Function to handle right-click on squares
-    const handleRightClick = useCallback((id) => {
-      setSquares(squares => squares.map(square => {
+        return acc;
+      }, {});
+      return { id: square.id, distances: distancesToOthers };
+    });
+
+    setSquares(updatedSquares);
+    setVisitedOrder(updatedVisitedOrder);
+    setDistances(updatedDistances);
+  };
+
+  // Function to reorder points using the polar coordinates method
+  const reorderSquares = squares => {
+    const centre = calculateCentreOfMass(squares.map(sq => sq.position));
+    return squares
+      .map(square => ({
+        ...square,
+        polarCoords: squaredPolar(square.position, centre),
+      }))
+      .sort(
+        (a, b) =>
+          a.polarCoords[0] - b.polarCoords[0] ||
+          a.polarCoords[1] - b.polarCoords[1]
+      )
+      .map(sq => ({
+        id: sq.id,
+        color: sq.color,
+        position: sq.position,
+        rotation: sq.rotation,
+      }));
+  };
+
+  // Function to calculate the shortest path using reordered squares
+  const calculateShortestPath = squares => {
+    if (squares.length === 0) return [];
+
+    const orderedSquares = reorderSquares(squares);
+    return orderedSquares.map(sq => sq.id);
+  };
+
+  // Handler for changes in Help Modal state
+  const handleHelpModalChange = e => {
+    setShowHelpModal(e.target.checked);
+  };
+
+  const closeHelpModal = () => {
+    setShowHelpModal(false);
+  };
+
+  // Function to toggle play/pause state
+  const togglePlayPause = () => {
+    setIsPaused(prev => !prev);
+  };
+
+  // Manual restart from the first step
+  const restartSequence = useCallback(() => {
+    schedulerRef.current.skipFrame = false;
+    setIsPaused(false);
+    setCurrentHit(null);
+    setMovingCircleActive(false);
+    setRestartKey(key => key + 1);
+  }, []);
+
+  // Function to handle drag event on squares
+  const handleDrag = useCallback((id, newPosition) => {
+    schedulerRef.current.skipFrame = true;
+    setMovingCircleActive(false);
+    setSquares(squares =>
+      squares.map(square =>
+        square.id === id ? { ...square, position: newPosition } : square
+      )
+    );
+  }, []);
+
+  // Function to handle rotation of squares
+  const handleRotate = useCallback((id, newRotation) => {
+    schedulerRef.current.skipFrame = true;
+    setMovingCircleActive(false);
+    setSquares(squares =>
+      squares.map(square =>
+        square.id === id
+          ? { ...square, rotation: normalizeRotation(newRotation) }
+          : square
+      )
+    );
+  }, []);
+
+  // Function to handle right-click on squares
+  const handleRightClick = useCallback(id => {
+    setSquares(squares =>
+      squares.map(square => {
         if (square.id === id) {
           return { ...square, color: getNextColor(square.color) };
         }
         return square;
-      }));
-    }, []);
-
-    // Function to handle selection of a square
-    const selectSquare = useCallback((id) => {
-      setSelectedSquare(id);
-    }, []);
-  
-  // Function to toggle the visibility of display elements
-    const toggleDisplays = () => {
-    setShowDisplays(!showDisplays); // Toggle the state
-    };
-  
-    // Function to toggle the visibility of the crosshair
-    const toggleCrosshair = () => {
-    setShowCrosshair(!showCrosshair); 
-    };
-
-    // Effect to setup RNBO device
-    useEffect(() => {
-    setup(setCurrentHit).then(device => {
-      rnboDevice.current = device;
-      console.log("RNBO setup completed");
-      // Verify if the device is correctly set
-      if (rnboDevice.current) {
-        sendStateToRNBO();
-      } else {
-        console.error("RNBO device was not set correctly.");
-      }
-    }).catch(err => {
-      console.error("RNBO setup failed:", err);
-    });
+      })
+    );
   }, []);
 
-    // Effect to send state to RNBO
-    useEffect(() => {
-      if (rnboDevice.current) {
-        sendStateToRNBO();
-      }
-    }, [squares, visitedOrder, distances]);
+  // Function to handle selection of a square
+  const selectSquare = useCallback(id => {
+    setSelectedSquare(id);
+  }, []);
 
-    // Effect to handle moving circle logic
-    useEffect(() => {
-    if (currentHit !== null && squareAngles[currentHit]) {
-      const currentSquare = squares.find(sq => sq.id === currentHit);
-      const nextSquareIndex = (visitedOrder.indexOf(currentHit) + 1) % visitedOrder.length;
-      const nextSquare = squares.find(sq => sq.id === visitedOrder[nextSquareIndex]);
+  // Function to toggle the visibility of display elements
+  const toggleDisplays = () => {
+    setShowDisplays(!showDisplays); // Toggle the state
+  };
 
-      if (currentSquare && nextSquare) {
-        const angleRad = squareAngles[currentHit] * (Math.PI / 180);
-        const dx = Math.cos(angleRad) * circleSpeed.current;
-        const dy = Math.sin(angleRad) * circleSpeed.current;
+  // Function to toggle the visibility of the crosshair
+  const toggleCrosshair = () => {
+    setShowCrosshair(!showCrosshair);
+  };
 
-        setCirclePosition({
-          x: currentSquare.position.x + 50, // Center of the current square
-          y: currentSquare.position.y + 50
-        });
+  useEffect(() => {
+    squaresRef.current = squares;
+  }, [squares]);
 
-        const moveCircle = () => {
-          setCirclePosition(prevPos => {
-            const distanceToNext = Math.sqrt(Math.pow(nextSquare.position.x + 50 - prevPos.x, 2) + Math.pow(nextSquare.position.y + 50 - prevPos.y, 2));
-            if (distanceToNext < 5) {
-              setMovingCircleActive(false);
-              return prevPos; // Stop moving if close enough to the next square
-            }
-            return {
-              x: prevPos.x + dx,
-              y: prevPos.y + dy
-            };
-          });
-        };
+  useEffect(() => {
+    visitedOrderRef.current = visitedOrder;
+  }, [visitedOrder]);
 
-        setMovingCircleActive(true);
-        const interval = setInterval(moveCircle, 1); // Adjust the interval for smoother animation
+  useEffect(() => {
+    distancesRef.current = distances;
+  }, [distances]);
 
-        return () => clearInterval(interval);
+  useEffect(() => {
+    tempoRef.current = tempo;
+  }, [tempo]);
+
+  useEffect(() => {
+    soundBankRef.current = soundBank;
+  }, [soundBank]);
+
+  const getSoundIdForColor = (color, bank) => {
+    const drumMap = {
+      red: 'kick',
+      green: 'snare',
+      purple: 'clap',
+      orange: 'hat',
+      blue: 'rim', // shaker uses rimshot timbre
+      pink: 'cowbell',
+    };
+    const synthMap = {
+      red: 'birdcall',
+      green: 'chirper',
+      purple: 'harshPluck',
+      orange: 'highPluck',
+      blue: 'flare',
+      pink: 'bubble',
+    };
+    const map = bank === 'synth' ? synthMap : drumMap;
+    return map[color] || null;
+  };
+
+  const clamp01 = v => Math.max(0, Math.min(1, v));
+
+  const buildSoundParams = (square, bank) => {
+    const normX = square.position.x / window.innerWidth;
+    const normY = square.position.y / window.innerHeight;
+    const gainFromRotation = (((square.rotation % 360) + 360) % 360) / 360;
+    // Map rotation to decibels for a more perceptual loudness curve (approx -16 dB to 0 dB)
+    const minDb = -16;
+    const maxDb = 0;
+    const db = minDb + (maxDb - minDb) * gainFromRotation;
+    const volume = Math.pow(10, db / 20);
+
+    const soundId = getSoundIdForColor(square.color, bank);
+
+    if (bank === 'synth') {
+      const tone = clamp01(normX);
+      const length = clamp01(normY);
+      switch (soundId) {
+        case 'bubble':
+          return {
+            volume,
+            tone,
+            length: clamp01(normY * 1.2),
+            baseFreq: 140 + normY * 260, // wider Y pitch range for the bubble/cowbell replacement
+          };
+        case 'harshPluck': // clap replacement: allow much shorter and longer
+          return {
+            volume,
+            tone,
+            length: clamp01(normY * 1.5),
+          };
+        case 'highPluck': // hat replacement: wider tone/length ranges
+          return {
+            volume,
+            tone: clamp01(normX * 1.3),
+            length: clamp01(normY * 1.6),
+          };
+        default:
+          return { volume, tone, length };
       }
     }
-  }, [currentHit, squares, squareAngles, visitedOrder, circleSpeed.current]);
 
-
-    useEffect(() => {
-      if (rnboDevice.current && !isPaused) {
-        const dataToSend = generateSquareDataAndAngles();
-        sendStateToRNBO(dataToSend);
+    switch (soundId) {
+      case 'kick':
+        return {
+          frequency: 40 + normX * 80,
+          decay: 300 + normY * 1200,
+          tone: 0.1 + normY * 0.6,
+          env_duration: 30 + normY * 70,
+          saturation: 1 + normY * 1.5,
+          volume,
+        };
+      case 'snare':
+        return {
+          frequency: 160 + normX * 140,
+          tone: 0.1 + normY * 0.8,
+          tone_decay: 80 + normY * 500,
+          decay: 180 + normY * 800,
+          volume,
+        };
+      case 'clap':
+        return {
+          spread: 5 + normX * 40,
+          decay: 60 + normY * 240,
+          tail: 120 + normY * 300,
+          volume,
+        };
+      case 'hat':
+        return {
+          tone: 8000 + normX * 5000,
+          decay: 60 + normY * 300,
+          volume,
+        };
+      case 'rim': {
+        const brightness = 0.7 + normX * 1.6; // shifts filter freqs for obvious tone change
+        const body = 0.6 + normY * 1.4; // longer decay + tighter Q up the screen
+        return {
+          decay: 30 + normY * 150, // 30–180 ms
+          hiPassFreq: 150 + normY * 1800, // keeps low thump when near bottom
+          filterFreqs: [220 * brightness, 500 * brightness, 950 * brightness],
+          filterQs: [7 + body * 4, 8 + body * 4, 10 + body * 4],
+          // keep gains/saturation static so loudness only follows rotation-based volume
+          filterGains: [16, 20, 24],
+          saturation: 2.5,
+          volume,
+        };
       }
-    }, [squares, visitedOrder, distances, isPaused]);
+      case 'cowbell':
+        return {
+          freq1: 540 + normX * 120,
+          freq2: 780 + normX * 140,
+          centerFreq: 2000 + normY * 1200,
+          decay: 200 + normY * 400,
+          volume,
+        };
+      default:
+        return { volume };
+    }
+  };
 
+  const computeGapSeconds = (currentId, nextId) => {
+    const distanceEntry = distancesRef.current.find(d => d.id === currentId);
+    const rawDistance = distanceEntry?.distances[`Square ${nextId}`];
+    const distance = isNaN(parseFloat(rawDistance))
+      ? 150
+      : parseFloat(rawDistance);
+    const baseGap = Math.min(
+      1.5,
+      Math.max(0.05, distance * baseSecondsPerPixel)
+    );
+    const effectiveTempo = Math.max(0.01, tempoRef.current); // avoid divide-by-zero
+    const scaledGap = baseGap / effectiveTempo;
+    return Math.min(2.5, Math.max(0.02, scaledGap));
+  };
 
-    // Effect to handle window resize events
-    useEffect(() => {
-      const handleResize = () => {
-        setWindowSize({ width: window.innerWidth, height: window.innerHeight });
-      };
-      window.addEventListener('resize', handleResize);
-      return () => window.removeEventListener('resize', handleResize);
-    }, []);
+  // Effect to set up Web Audio drum engine
+  useEffect(() => {
+    const newEngine =
+      soundBank === 'synth' ? createSynthEngine() : createDrumEngine();
+    const prevEngine = audioEngineRef.current;
+    audioEngineRef.current = newEngine;
+    if (prevEngine) {
+      prevEngine.dispose();
+    }
+    return () => {
+      if (schedulerRef.current.timeoutId) {
+        clearTimeout(schedulerRef.current.timeoutId);
+      }
+      newEngine?.dispose();
+      if (audioEngineRef.current === newEngine) {
+        audioEngineRef.current = null;
+      }
+    };
+  }, [soundBank]);
 
-    // Effect to handle backspace key press for square deletion
-    useEffect(() => {
-      const handleBackspaceKeyPress = (event) => {
-        if (event.key === 'Backspace' && selectedSquare != null) {
-          deleteSquare(selectedSquare);
-          setSelectedSquare(null);
+  // Sequencer and moving circle driven together
+  useEffect(() => {
+    // stop any existing animation
+    if (schedulerRef.current.frameId) {
+      cancelAnimationFrame(schedulerRef.current.frameId);
+    }
+    schedulerRef.current.running = false;
+
+    const order = visitedOrderRef.current;
+    if (
+      isPaused ||
+      !audioEngineRef.current ||
+      order.length === 0 ||
+      squaresRef.current.length === 0
+    ) {
+      setCurrentHit(null);
+      setMovingCircleActive(false);
+      return;
+    }
+
+    const startIndex =
+      currentHit !== null && order.includes(currentHit)
+        ? order.indexOf(currentHit)
+        : 0;
+
+    const step = index => {
+      if (!audioEngineRef.current || isPaused) return;
+      const ord = visitedOrderRef.current;
+      if (ord.length === 0) return;
+
+      const currentId = ord[index % ord.length];
+      const nextId = ord[(index + 1) % ord.length];
+      const square = squaresRef.current.find(sq => sq.id === currentId);
+      const nextSquare = squaresRef.current.find(sq => sq.id === nextId);
+      if (!square || !nextSquare) return;
+
+      const startX = square.position.x + 50;
+      const startY = square.position.y + 50;
+      const endX = nextSquare.position.x + 50;
+      const endY = nextSquare.position.y + 50;
+
+      const gapSeconds = computeGapSeconds(currentId, nextId);
+      const durationMs = gapSeconds * 1000;
+      const startMs = performance.now();
+      const endMs = startMs + durationMs;
+
+      const activeBank = soundBankRef.current;
+      const soundId = getSoundIdForColor(square.color, activeBank);
+      const params = buildSoundParams(square, activeBank);
+      const time = audioEngineRef.current.currentTime() + 0.005;
+      if (soundId) {
+        audioEngineRef.current.triggerSound(soundId, params, time);
+      }
+      setCurrentHit(currentId);
+
+      setCirclePosition({ x: startX, y: startY });
+      setMovingCircleActive(true);
+
+      const animate = () => {
+        if (!schedulerRef.current.running) return;
+        // If user just dragged/rotated, clear the flag but keep timing in sync.
+        if (schedulerRef.current.skipFrame) {
+          schedulerRef.current.skipFrame = false;
         }
+        const now = performance.now();
+        const t = Math.min(1, (now - startMs) / durationMs);
+        const x = startX + (endX - startX) * t;
+        const y = startY + (endY - startY) * t;
+        setCirclePosition({ x, y });
+
+        if (t >= 1) {
+          step((index + 1) % ord.length);
+          return;
+        }
+        schedulerRef.current.frameId = requestAnimationFrame(animate);
       };
 
-      document.addEventListener('keydown', handleBackspaceKeyPress);
-      return () => document.removeEventListener('keydown', handleBackspaceKeyPress);
-    }, [selectedSquare]);
+      schedulerRef.current.frameId = requestAnimationFrame(animate);
+    };
 
-    // Effect to update distances and visitedOrder
-    useEffect(() => {
-      const newDistances = squares.map(square => {
-        const distancesToOthers = squares.reduce((acc, otherSquare) => {
-          if (square.id !== otherSquare.id) {
-            acc[`Square ${otherSquare.id}`] = calculateDistance(square.position, otherSquare.position);
-          }
-          return acc;
-        }, {});
-        return { id: square.id, distances: distancesToOthers };
-      });
-      setDistances(newDistances);
-      setVisitedOrder(calculateShortestPath(squares));
-    }, [squares]);
+    schedulerRef.current.running = true;
+    step(startIndex);
 
-    // Effect to update square angles
-    useEffect(() => {
-      calculateAngles( visitedOrder, squares, setSquareAngles );
-    }, [squares, visitedOrder]);
+    return () => {
+      schedulerRef.current.running = false;
+      if (schedulerRef.current.frameId) {
+        cancelAnimationFrame(schedulerRef.current.frameId);
+      }
+    };
+    // Only restart when pause state changes, the number of nodes changes, or a manual restart is requested.
+    // Reordering/dragging updates refs without resetting the sequencer to avoid rapid retriggers.
+  }, [isPaused, visitedOrder.length, restartKey]);
+  // Effect to handle window resize events
+  useEffect(() => {
+    const handleResize = () => {
+      setWindowSize({ width: window.innerWidth, height: window.innerHeight });
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  // Effect to handle backspace key press for square deletion
+  useEffect(() => {
+    const handleBackspaceKeyPress = event => {
+      if (event.key === 'Backspace' && selectedSquare != null) {
+        deleteSquare(selectedSquare);
+        setSelectedSquare(null);
+      }
+    };
+
+    document.addEventListener('keydown', handleBackspaceKeyPress);
+    return () =>
+      document.removeEventListener('keydown', handleBackspaceKeyPress);
+  }, [selectedSquare]);
+
+  // Effect to update distances and visitedOrder
+  useEffect(() => {
+    const newDistances = squares.map(square => {
+      const distancesToOthers = squares.reduce((acc, otherSquare) => {
+        if (square.id !== otherSquare.id) {
+          acc[`Square ${otherSquare.id}`] = calculateDistance(
+            square.position,
+            otherSquare.position
+          );
+        }
+        return acc;
+      }, {});
+      return { id: square.id, distances: distancesToOthers };
+    });
+    setDistances(newDistances);
+    setVisitedOrder(calculateShortestPath(squares));
+  }, [squares]);
+
+  // Effect to update square angles
+  useEffect(() => {
+    calculateAngles(visitedOrder, squares, setSquareAngles);
+  }, [squares, visitedOrder]);
 
   return (
     <CurrentHitContext.Provider value={{ currentHit, setCurrentHit }}>
-
-    <div style={{
-      position: 'relative',
-      width: window.innerWidth,
-      height: window.innerHeight,
-      overflow: 'hidden', // Hide the overflow
-
-    }}>
+      <div
+        style={{
+          position: 'relative',
+          width: window.innerWidth,
+          height: window.innerHeight,
+          overflow: 'hidden', // Hide the overflow
+        }}
+      >
         {/* Conditionally render the logo */}
         {!showDisplays && (
-          <a href="https://www.iimaginary.com/" target="_blank" rel="noopener noreferrer">
-            <img 
+          <a
+            href="https://www.iimaginary.com/"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <img
               src={logo}
               alt="Logo"
-              style={{ 
-                position: 'absolute', 
-                width: '55px', 
-                height: '50px', 
+              style={{
+                position: 'absolute',
+                width: '55px',
+                height: '50px',
                 paddingLeft: '10px',
-                paddingTop: '10px' 
+                paddingTop: '10px',
               }}
             />
           </a>
         )}
 
-      <canvas id="pathCanvas" style={{ position: 'absolute', top: 0, left: 0, zIndex: -1 }}></canvas>
+        <canvas
+          id="pathCanvas"
+          style={{ position: 'absolute', top: 0, left: 0, zIndex: -1 }}
+        ></canvas>
         {/* Centered container for "Add Node" button and checkboxes */}
-        <div style={{
-          display: 'flex',
-          justifyContent: 'center', // This centers the .controls div
-          alignItems: 'center',
-          marginTop: '15px',
-          fontFamily: 'Courier New, monospace',
-        }}>
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            marginTop: '15px',
+            fontFamily: 'Courier New, monospace',
+            gap: '12px',
+          }}
+        >
+          {squares.length < 16 && (
+            <button
+              onClick={addSquare}
+              style={{
+                backgroundColor: 'white',
+                color: 'black',
+                padding: '10px 20px',
+                textAlign: 'center',
+                textDecoration: 'none',
+                fontSize: '16px',
+                cursor: 'pointer',
+                borderRadius: '2px',
+                border: 'none',
+                boxShadow: '0 2px 5px rgba(0,0,0,0.2)',
+                fontFamily: 'Courier New, monospace',
+              }}
+            >
+              Add Node
+            </button>
+          )}
+          <button
+            onClick={restartSequence}
+            style={{ padding: '10px 14px', fontFamily: 'inherit' }}
+          >
+            Restart
+          </button>
+          <select
+            id="soundbank-select"
+            value={soundBank}
+            onChange={e => setSoundBank(e.target.value)}
+            style={{ padding: '10px 12px', fontFamily: 'inherit' }}
+          >
+            <option value="drums">Drums</option>
+            <option value="synth">Synth</option>
+          </select>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              color: 'black',
+            }}
+          >
+            <label htmlFor="tempo-slider">Tempo</label>
+            <input
+              id="tempo-slider"
+              type="range"
+              min="0"
+              max="3"
+              step="0.1"
+              value={tempo}
+              onChange={e => setTempo(parseFloat(e.target.value))}
+            />
+            <span style={{ color: 'black' }}>{tempo.toFixed(1)}x</span>
+          </div>
           <Controls
-            squaresLength={squares.length}
-            addSquareCallback={addSquare} // Replace with actual function from your App component
             showDisplays={showDisplays}
             toggleDisplays={toggleDisplays}
             showCrosshair={showCrosshair}
@@ -364,59 +646,64 @@ const App = () => {
             showHelpModal={showHelpModal}
             handleHelpModalChange={handleHelpModalChange}
           />
-
         </div>
-          {/* Render the path rectangles */}
-          {visitedOrder.map((id, index) => {
-            const square = squares.find(sq => sq.id === id);
-            if (!square) return null;
+        {/* Render the path rectangles */}
+        {visitedOrder.map((id, index) => {
+          const square = squares.find(sq => sq.id === id);
+          if (!square) return null;
 
-            let nextSquareIndex = (index + 1) % visitedOrder.length;
-            // Check if there are only two squares and if it's the second iteration
-            if (visitedOrder.length === 2 && index === 1) {
-              return null; // Don't render the second rectangle
-            }
+          let nextSquareIndex = (index + 1) % visitedOrder.length;
+          // Check if there are only two squares and if it's the second iteration
+          if (visitedOrder.length === 2 && index === 1) {
+            return null; // Don't render the second rectangle
+          }
 
-            const nextSquare = squares.find(sq => sq.id === visitedOrder[nextSquareIndex]);
+          const nextSquare = squares.find(
+            sq => sq.id === visitedOrder[nextSquareIndex]
+          );
 
-            return (
-              <Path
-                key={id}
-                startX={square.position.x + 50} // Center of the square
-                startY={square.position.y + 50}
-                endX={nextSquare.position.x + 50}
-                endY={nextSquare.position.y + 50}
-              />
-            );
-          })}
-
-          {/* Render squares */}
-          {squares.map(square => (
-            <Square
-              key={square.id}
-              id={square.id}
-              color={square.color}
-              position={square.position}
-              rotation={square.rotation}
-              onDrag={handleDrag}
-              onRotate={handleRotate}
-              onRightClick={handleRightClick}
-              onSelect={selectSquare}
+          return (
+            <Path
+              key={id}
+              startX={square.position.x + 50} // Center of the square
+              startY={square.position.y + 50}
+              endX={nextSquare.position.x + 50}
+              endY={nextSquare.position.y + 50}
             />
-          ))}
-      {showDisplays && <DistanceDisplay distances={distances} style={{ marginLeft: '10px', marginTop: '10px' }} />}
-      {showDisplays && <SquareDetails squares={squares} />}
-      <PathDisplay path={visitedOrder} distances={distances} />
-      {movingCircleActive && !isPaused && <MovingCircle position={circlePosition} />}
-      <ConcentricCircles radius={120} spacing={120} count={5} />
-      {showCrosshair && <Crosshairs squares={squares} />}
-      <HelpModal isOpen={showHelpModal} onClose={closeHelpModal} />
+          );
+        })}
 
-
-    </div>
-  </CurrentHitContext.Provider>
-
-);
+        {/* Render squares */}
+        {squares.map(square => (
+          <Square
+            key={square.id}
+            id={square.id}
+            color={square.color}
+            position={square.position}
+            rotation={square.rotation}
+            onDrag={handleDrag}
+            onRotate={handleRotate}
+            onRightClick={handleRightClick}
+            onSelect={selectSquare}
+          />
+        ))}
+        {showDisplays && (
+          <DistanceDisplay
+            distances={distances}
+            style={{ marginLeft: '10px', marginTop: '10px' }}
+          />
+        )}
+        {showDisplays && <SquareDetails squares={squares} />}
+        <PathDisplay path={visitedOrder} distances={distances} />
+        {movingCircleActive && !isPaused && (
+          <MovingCircle position={circlePosition} />
+        )}
+        <ConcentricCircles radius={120} spacing={120} count={5} />
+        {showCrosshair && <Crosshairs squares={squares} />}
+        <HelpModal isOpen={showHelpModal} onClose={closeHelpModal} />
+      </div>
+    </CurrentHitContext.Provider>
+  );
 };
 
 export default App;
