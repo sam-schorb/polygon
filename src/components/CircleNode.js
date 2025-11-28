@@ -1,24 +1,9 @@
-// Square.js
-
-import { memo, useContext, useRef } from 'react';
+import React, { memo, useRef } from 'react';
 import useInteract from '../utils/useInteract';
 import { getNodeIcon } from '../utils/nodeIcons';
-import { CurrentHitContext } from './App'; // Import the context
 
-const Square = memo(
-  ({
-    id,
-    color,
-    colorKey,
-    position,
-    rotation,
-    onDrag,
-    onRotate,
-    onRightClick,
-    onSelect,
-    soundBank,
-  }) => {
-    const { currentHit } = useContext(CurrentHitContext);
+const CircleNode = memo(
+  ({ id, color, colorKey, position, rotation, onDrag, onRotate, onRightClick, onSelect, soundBank }) => {
     const ref = useRef(null);
     const rotateHandleRef = useRef(null);
     useInteract(
@@ -30,69 +15,71 @@ const Square = memo(
       newRotation => onRotate(id, newRotation)
     );
 
-    const handleClick = () => {
-      if (onSelect) {
-        onSelect({ id, layer: 1 });
-      }
-    };
-
     const handleContextMenu = event => {
       event.preventDefault();
       onRightClick(id);
     };
 
-    const nodeIcon = getNodeIcon(colorKey, soundBank);
-
-    // Image style
-    const imageStyle = {
-      width: '40px',
-      height: 'auto', // Maintain aspect ratio
-      position: 'absolute',
-      top: '50%',
-      left: '50%',
-      transform: 'translate(-50%, -50%)',
+    const handleClick = () => {
+      if (onSelect) {
+        onSelect({ id, layer: 2 });
+      }
     };
 
-    const squareStyle = {
+    const nodeIcon = getNodeIcon(colorKey, soundBank);
+
+    const nodeStyle = {
       width: '80px',
       height: '80px',
       backgroundColor: color,
       position: 'absolute',
       left: `${position.x}px`,
       top: `${position.y}px`,
-      transform: `rotate(${rotation}deg) translateZ(0)`, // Apply rotation and trigger hardware acceleration
+      transform: `rotate(${rotation}deg) translateZ(0)`,
       lineHeight: '80px',
       textAlign: 'center',
       color: 'white',
       fontWeight: 'bold',
       cursor: 'move',
-      border: currentHit === id ? '2px solid white' : '2px solid #737373',
+      border: '2px solid #737373',
       boxShadow: `0px 0px 10px 0px #737373`,
-      zIndex: 3, // High z-index,
+      zIndex: 3,
+      borderRadius: '50%',
+      overflow: 'hidden',
     };
 
     const rotateHandleStyle = {
       position: 'absolute',
-      bottom: '0',
-      right: '0',
-      width: '20px',
-      height: '20px',
+      bottom: '4px',
+      right: '4px',
+      width: '18px',
+      height: '18px',
       backgroundColor: '#383838',
       cursor: 'pointer',
+      borderRadius: '50%',
     };
 
     return (
       <div
         ref={ref}
-        style={squareStyle}
+        style={nodeStyle}
         onContextMenu={handleContextMenu}
         onClick={handleClick}
+        aria-label={`Circle node ${id}`}
       >
         {nodeIcon && (
           <img
             src={nodeIcon}
-            style={imageStyle}
-            alt="Square Icon"
+            alt="Circle Icon"
+            style={{
+              width: '40px',
+              height: 'auto',
+              position: 'absolute',
+              top: '50%',
+              left: '50%',
+              transform: 'translate(-50%, -50%)',
+              pointerEvents: 'none',
+            }}
           />
         )}
         <div ref={rotateHandleRef} style={rotateHandleStyle} />
@@ -101,4 +88,4 @@ const Square = memo(
   }
 );
 
-export default Square;
+export default CircleNode;
